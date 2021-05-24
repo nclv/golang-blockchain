@@ -2,6 +2,8 @@ package blockchain
 
 import (
 	"bytes"
+	"encoding/gob"
+	"log"
 
 	"github.com/nclv/golang-blockchain/wallet"
 )
@@ -11,6 +13,10 @@ type TxInput struct {
 	Out       int
 	Signature []byte
 	PubKey    []byte
+}
+
+type TxOutputs struct {
+	Outputs []TxOutput
 }
 
 type TxOutput struct {
@@ -23,6 +29,24 @@ func NewTXOutput(value int, address string) *TxOutput {
 	txo.Lock([]byte(address))
 
 	return txo
+}
+
+func (outs TxOutputs) Serialize() []byte {
+	var buffer bytes.Buffer
+	encoder := gob.NewEncoder(&buffer)
+	if err := encoder.Encode(outs); err != nil {
+		log.Panic(err)
+	}
+	return buffer.Bytes()
+}
+
+func DeserializeOutputs(data []byte) TxOutputs {
+	var outputs TxOutputs
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&outputs); err != nil {
+		log.Panic(err)
+	}
+	return outputs
 }
 
 func (in *TxInput) UsesKey(pubKeyHash []byte) bool {
