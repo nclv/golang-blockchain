@@ -169,7 +169,7 @@ func (chain *BlockChain) GetBlock(blockHash []byte) (Block, error) {
 
 	if err := chain.Database.View(func(txn *badger.Txn) error {
 		if item, err := txn.Get(blockHash); err != nil {
-			return errors.New("Block is not found")
+			return errors.New("block is not found")
 		} else {
 			blockData, _ := item.ValueCopy(nil)
 
@@ -317,8 +317,8 @@ func (chain *BlockChain) FindUTXO() map[string]TxOutputs {
 	return UTXO
 }
 
-func (bc *BlockChain) FindTransaction(ID []byte) (Transaction, error) {
-	iter := bc.Iterator()
+func (chain *BlockChain) FindTransaction(ID []byte) (Transaction, error) {
+	iter := chain.Iterator()
 
 	for {
 		block := iter.Next()
@@ -334,14 +334,14 @@ func (bc *BlockChain) FindTransaction(ID []byte) (Transaction, error) {
 		}
 	}
 
-	return Transaction{}, errors.New("Transaction does not exist")
+	return Transaction{}, errors.New("transaction does not exist")
 }
 
-func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+func (chain *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTXs := make(map[string]Transaction)
 
 	for _, in := range tx.Inputs {
-		prevTX, err := bc.FindTransaction(in.ID)
+		prevTX, err := chain.FindTransaction(in.ID)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -351,7 +351,7 @@ func (bc *BlockChain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey)
 	tx.Sign(privKey, prevTXs)
 }
 
-func (bc *BlockChain) VerifyTransaction(tx *Transaction) bool {
+func (chain *BlockChain) VerifyTransaction(tx *Transaction) bool {
 	if tx.IsCoinbase() {
 		return true
 	}
@@ -359,7 +359,7 @@ func (bc *BlockChain) VerifyTransaction(tx *Transaction) bool {
 	prevTXs := make(map[string]Transaction)
 
 	for _, in := range tx.Inputs {
-		prevTX, err := bc.FindTransaction(in.ID)
+		prevTX, err := chain.FindTransaction(in.ID)
 		if err != nil {
 			log.Panic(err)
 		}

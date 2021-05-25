@@ -10,11 +10,10 @@ import (
 
 // for BadgerDB ordering
 var (
-	utxoPrefix   = []byte("utxo-")
-	prefixLength = len(utxoPrefix)
+	utxoPrefix = []byte("utxo-")
 )
 
-// Unspent transactions outputs set
+// UTXOSet Unspent transactions outputs set
 type UTXOSet struct {
 	BlockChain *BlockChain
 }
@@ -213,7 +212,7 @@ func (u *UTXOSet) DeleteByPrefix(prefix []byte) {
 
 	// bulk deletes
 	collectSize := 100000
-	u.BlockChain.Database.View(func(txn *badger.Txn) error {
+	if err := u.BlockChain.Database.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		// we don't care about the values, it is removed whith the key
 		opts.PrefetchValues = false
@@ -240,5 +239,7 @@ func (u *UTXOSet) DeleteByPrefix(prefix []byte) {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		log.Panic(err)
+	}
 }

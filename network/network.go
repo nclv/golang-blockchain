@@ -13,7 +13,9 @@ import (
 	"runtime"
 	"syscall"
 
-	death "github.com/vrecan/death/v3" // intercept Ctrl-C and close the database
+	"github.com/dgraph-io/badger"
+
+	"github.com/vrecan/death/v3" // intercept Ctrl-C and close the database
 
 	"github.com/nclv/golang-blockchain/blockchain"
 )
@@ -25,11 +27,11 @@ const (
 )
 
 var (
-	nodeAddress      string
-	minerAddress     string
-	KnownNodes       = []string{"localhost:3000"} // central node
-	blocksInTransmit = [][]byte{}
-	memoryPool       = make(map[string]blockchain.Transaction)
+	nodeAddress         string
+	networkMinerAddress string
+	KnownNodes          = []string{"localhost:3000"} // central node
+	blocksInTransmit    [][]byte
+	memoryPool          = make(map[string]blockchain.Transaction)
 )
 
 type Addr struct {
@@ -70,7 +72,12 @@ type Version struct {
 
 func HandleConnection(conn net.Conn, chain *blockchain.BlockChain) {
 	req, err := ioutil.ReadAll(conn)
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(conn)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -84,7 +91,7 @@ func HandleConnection(conn net.Conn, chain *blockchain.BlockChain) {
 	case "block":
 		HandleBlock(req, chain)
 	case "inv":
-		HandleInv(req, chain)
+		HandleInv(req)
 	case "getblocks":
 		HandleGetBlocks(req, chain)
 	case "getdata":
@@ -100,15 +107,25 @@ func HandleConnection(conn net.Conn, chain *blockchain.BlockChain) {
 
 func StartServer(nodeID, minerAddress string) {
 	nodeAddress = fmt.Sprintf("localhost:%s", nodeID)
-	minerAddress = minerAddress
+	networkMinerAddress = minerAddress
 	ln, err := net.Listen(protocol, nodeAddress)
 	if err != nil {
 		log.Panic(err)
 	}
-	defer ln.Close()
+	defer func(ln net.Listener) {
+		err := ln.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(ln)
 
 	chain := blockchain.ContinueBlockChain(nodeID)
-	defer chain.Database.Close()
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 	go CloseDB(chain)
 
 	if nodeAddress != KnownNodes[0] {
@@ -163,7 +180,7 @@ func HandleBlock(request []byte, chain *blockchain.BlockChain) {
 
 		blocksInTransmit = blocksInTransmit[1:]
 	} else {
-		UTXOSet := blockchain.UTXOSet{chain}
+		UTXOSet := blockchain.UTXOSet{BlockChain: chain}
 		UTXOSet.Reindex()
 	}
 }
@@ -193,7 +210,7 @@ func HandleGetData(request []byte, chain *blockchain.BlockChain) {
 	}
 
 	if payload.Type == "block" {
-		block, err := chain.GetBlock([]byte(payload.ID))
+		block, err := chain.GetBlock(payload.ID)
 		if err != nil {
 			return
 		}
@@ -256,13 +273,13 @@ func HandleTx(request []byte, chain *blockchain.BlockChain) {
 			}
 		}
 	} else {
-		if len(memoryPool) >= 2 && len(minerAddress) > 0 {
+		if len(memoryPool) >= 2 && len(networkMinerAddress) > 0 {
 			MineTx(chain)
 		}
 	}
 }
 
-func HandleInv(request []byte, chain *blockchain.BlockChain) {
+func HandleInv(request []byte) {
 	var buff bytes.Buffer
 	var payload Inv
 
@@ -280,7 +297,7 @@ func HandleInv(request []byte, chain *blockchain.BlockChain) {
 		blockHash := payload.Items[0]
 		SendGetData(payload.AddrFrom, "block", blockHash)
 
-		newInTransit := [][]byte{}
+		var newInTransit [][]byte
 		for _, b := range blocksInTransmit {
 			if bytes.Compare(b, blockHash) != 0 {
 				newInTransit = append(newInTransit, b)
@@ -314,11 +331,11 @@ func MineTx(chain *blockchain.BlockChain) {
 		return
 	}
 
-	cbTx := blockchain.CoinbaseTx(minerAddress, "")
+	cbTx := blockchain.CoinbaseTx(networkMinerAddress, "")
 	txs = append(txs, cbTx)
 
 	newBlock := chain.MineBlock(txs)
-	UTXOSet := blockchain.UTXOSet{chain}
+	UTXOSet := blockchain.UTXOSet{BlockChain: chain}
 	UTXOSet.Reindex()
 
 	fmt.Println("New block mined")
@@ -371,7 +388,10 @@ func CloseDB(chain *blockchain.BlockChain) {
 	d.WaitForDeathWithFunc(func() {
 		defer os.Exit(1)
 		defer runtime.Goexit()
-		chain.Database.Close()
+		err := chain.Database.Close()
+		if err != nil {
+			return
+		}
 	})
 }
 
@@ -395,19 +415,6 @@ func BytesToCmd(bytes []byte) string {
 	}
 
 	return fmt.Sprintf("%s", cmd)
-}
-
-func ExtractCmd(request []byte) []byte {
-	return request[:commandLength]
-}
-
-func SendAddr(address string) {
-	nodes := Addr{KnownNodes}
-	nodes.AddrList = append(nodes.AddrList, nodeAddress)
-	payload := GobEncode(nodes)
-	request := append(CmdToBytes("addr"), payload...)
-
-	SendData(address, request)
 }
 
 func SendBlock(address string, b *blockchain.Block) {
@@ -472,7 +479,12 @@ func SendData(addr string, data []byte) {
 		return
 	}
 
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(conn)
 
 	if _, err := io.Copy(conn, bytes.NewReader(data)); err != nil {
 		log.Panic(err)

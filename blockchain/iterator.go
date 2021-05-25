@@ -6,18 +6,18 @@ import (
 	"github.com/dgraph-io/badger"
 )
 
-type BlockChainIterator struct {
+type Iterator struct {
 	CurrentHash []byte
 	Database    *badger.DB
 }
 
-func (chain *BlockChain) Iterator() *BlockChainIterator {
-	iter := &BlockChainIterator{chain.LastHash, chain.Database}
+func (chain *BlockChain) Iterator() *Iterator {
+	iter := &Iterator{chain.LastHash, chain.Database}
 
 	return iter
 }
 
-func (iter *BlockChainIterator) Next() *Block {
+func (iter *Iterator) Next() *Block {
 	var block *Block
 
 	if err := iter.Database.View(func(txn *badger.Txn) error {

@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strconv"
 
+	"github.com/dgraph-io/badger"
+
 	"github.com/nclv/golang-blockchain/blockchain"
 	"github.com/nclv/golang-blockchain/network"
 	"github.com/nclv/golang-blockchain/wallet"
@@ -66,9 +68,14 @@ func (cli *CommandLine) CreateWallet(nodeID string) {
 
 func (cli *CommandLine) ReindexUTXO(nodeID string) {
 	chain := blockchain.ContinueBlockChain(nodeID)
-	defer chain.Database.Close()
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 
-	UTXOSet := blockchain.UTXOSet{chain}
+	UTXOSet := blockchain.UTXOSet{BlockChain: chain}
 	UTXOSet.Reindex()
 
 	count := UTXOSet.CountTransactions()
@@ -77,7 +84,12 @@ func (cli *CommandLine) ReindexUTXO(nodeID string) {
 
 func (cli *CommandLine) PrintChain(nodeID string) {
 	chain := blockchain.ContinueBlockChain(nodeID)
-	defer chain.Database.Close()
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 
 	iter := chain.Iterator()
 	for {
@@ -105,9 +117,14 @@ func (cli *CommandLine) CreateBlockChain(address, nodeID string) {
 	}
 
 	chain := blockchain.InitBlockChain(address, nodeID)
-	defer chain.Database.Close()
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 
-	UTXOSet := blockchain.UTXOSet{chain}
+	UTXOSet := blockchain.UTXOSet{BlockChain: chain}
 	UTXOSet.Reindex()
 
 	fmt.Println("Finished!")
@@ -119,8 +136,13 @@ func (cli *CommandLine) GetBalance(address, nodeID string) {
 	}
 
 	chain := blockchain.ContinueBlockChain(nodeID)
-	UTXOSet := blockchain.UTXOSet{chain}
-	defer chain.Database.Close()
+	UTXOSet := blockchain.UTXOSet{BlockChain: chain}
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 
 	balance := 0
 	pubKeyHash := wallet.Base58Decode([]byte(address))
@@ -133,7 +155,7 @@ func (cli *CommandLine) GetBalance(address, nodeID string) {
 	fmt.Printf("Balance of %s: %d\n", address, balance)
 }
 
-// from is the user mining the transaction
+// Send from is the user mining the transaction
 func (cli *CommandLine) Send(from, to string, amount int, nodeID string, mineNow bool) {
 	if !wallet.ValidateAddress(from) {
 		log.Panic("Address is not valid")
@@ -143,8 +165,13 @@ func (cli *CommandLine) Send(from, to string, amount int, nodeID string, mineNow
 	}
 
 	chain := blockchain.ContinueBlockChain(nodeID)
-	UTXOSet := blockchain.UTXOSet{chain}
-	defer chain.Database.Close()
+	UTXOSet := blockchain.UTXOSet{BlockChain: chain}
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}(chain.Database)
 
 	wallets, err := wallet.CreateWallets(nodeID)
 	if err != nil {
