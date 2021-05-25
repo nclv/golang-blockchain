@@ -118,6 +118,7 @@ func (cli *CommandLine) GetBalance(address string) {
 	fmt.Printf("Balance of %s: %d\n", address, balance)
 }
 
+// from is the user mining the transaction
 func (cli *CommandLine) Send(from, to string, amount int) {
 	if !wallet.ValidateAddress(from) {
 		log.Panic("Address is not valid")
@@ -131,7 +132,8 @@ func (cli *CommandLine) Send(from, to string, amount int) {
 	defer chain.Database.Close()
 
 	tx := blockchain.NewTransaction(from, to, amount, &UTXOSet)
-	block := chain.AddBlock([]*blockchain.Transaction{tx})
+	cbTx := blockchain.CoinbaseTx(from, "")
+	block := chain.AddBlock([]*blockchain.Transaction{cbTx, tx})
 	UTXOSet.Update(block)
 	fmt.Println("Success!")
 }
